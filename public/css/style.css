@@ -334,7 +334,6 @@ details[open] .sub-arrow { transform: rotate(90deg); }
 
 .player-wrapper {
   border-radius: 8px;
-  overflow: hidden;
   background: #000;
   position: relative;
   box-shadow: 0 0 0 1px var(--border);
@@ -344,6 +343,19 @@ details[open] .sub-arrow { transform: rotate(90deg); }
   width: 100% !important;
   height: auto !important;
   aspect-ratio: 16 / 9;
+}
+
+/* ── Subtitle (caption) display fixes ───────────────────────── */
+/* Prevent the caption overlay from being clipped by the wrapper */
+.video-js .vjs-text-track-display {
+  overflow: visible !important;
+  pointer-events: none;
+}
+
+/* Give cue text a clean background and proper wrapping */
+.video-js .vjs-text-track-cue > * {
+  white-space: pre-wrap !important;
+  unicode-bidi: plaintext !important;
 }
 
 /* Video.js accent overrides */
@@ -495,6 +507,51 @@ details[open] .sub-arrow { transform: rotate(90deg); }
   text-align: center;
   color: var(--text-muted);
   font-size: .8rem;
+}
+
+/* ── Theater mode ───────────────────────────────────────────── */
+.container.theater {
+  max-width: 100%;
+  padding: 0 .5rem;
+}
+
+.container.theater .player-wrapper {
+  border-radius: 0;
+}
+
+/* ── Active state for toggle buttons ───────────────────────── */
+.btn-ghost.active {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(229, 23, 63, .08);
+}
+
+/* ── Keyboard shortcuts panel ───────────────────────────────── */
+.shortcuts-panel {
+  margin-top: .75rem;
+  padding: .9rem 1.1rem;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: .82rem;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .35rem .9rem;
+  align-items: baseline;
+}
+
+.sk {
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: .1em .45em;
+  font-size: .78rem;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 /* ── Spinner ────────────────────────────────────────────────── */

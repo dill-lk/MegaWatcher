@@ -94,6 +94,20 @@
         <option value="Swedish">
         <option value="Indonesian">
         <option value="Vietnamese">
+        <option value="Sinhala">
+        <option value="Tamil">
+        <option value="Thai">
+        <option value="Greek">
+        <option value="Hebrew">
+        <option value="Ukrainian">
+        <option value="Romanian">
+        <option value="Czech">
+        <option value="Hungarian">
+        <option value="Danish">
+        <option value="Finnish">
+        <option value="Norwegian">
+        <option value="Malay">
+        <option value="Bengali">
       </datalist>
 
       <!-- Actions -->
@@ -162,12 +176,36 @@
                min="0" max="1" step="0.01" value="1" aria-label="Volume" />
         <span id="volume-display" class="volume-display">100%</span>
 
+        <button class="btn btn-ghost btn-sm" id="loop-btn" type="button" title="Toggle loop">
+          ↺ Loop
+        </button>
+        <button class="btn btn-ghost btn-sm" id="theater-btn" type="button" title="Theater mode">
+          ▭ Theater
+        </button>
         <button class="btn btn-ghost btn-sm" id="pip-btn" type="button" title="Picture-in-Picture">
           ⧉ PiP
         </button>
         <button class="btn btn-ghost btn-sm" id="fullscreen-btn" type="button" title="Fullscreen">
           ⛶ Fullscreen
         </button>
+        <button class="btn btn-ghost btn-sm" id="shortcuts-btn" type="button" title="Keyboard shortcuts">
+          ⌨ Shortcuts
+        </button>
+      </div>
+
+      <!-- Keyboard shortcuts panel (hidden by default) -->
+      <div class="shortcuts-panel" id="shortcuts-panel" hidden>
+        <div class="shortcuts-grid">
+          <span class="sk">Space / K</span><span>Play / Pause</span>
+          <span class="sk">← / →</span><span>Seek −5 s / +5 s</span>
+          <span class="sk">J / L</span><span>Seek −10 s / +10 s</span>
+          <span class="sk">↑ / ↓</span><span>Volume +10 % / −10 %</span>
+          <span class="sk">M</span><span>Mute / Unmute</span>
+          <span class="sk">F</span><span>Fullscreen</span>
+          <span class="sk">C</span><span>Toggle captions</span>
+          <span class="sk">T</span><span>Theater mode</span>
+          <span class="sk">0 – 9</span><span>Jump to 0 %–90 % of video</span>
+        </div>
       </div>
 
       <button class="btn btn-secondary btn-sm mt-1" id="back-btn" type="button">

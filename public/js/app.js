@@ -32,6 +32,10 @@ const volumeSlider    = document.getElementById('volume-slider');
 const volumeDisplay   = document.getElementById('volume-display');
 const pipBtn          = document.getElementById('pip-btn');
 const fullscreenBtn   = document.getElementById('fullscreen-btn');
+const loopBtn         = document.getElementById('loop-btn');
+const theaterBtn      = document.getElementById('theater-btn');
+const shortcutsBtn    = document.getElementById('shortcuts-btn');
+const shortcutsPanel  = document.getElementById('shortcuts-panel');
 const backBtn         = document.getElementById('back-btn');
 const subtitleRowsEl  = document.getElementById('subtitle-rows');
 const addSubtitleBtn  = document.getElementById('add-subtitle-btn');
@@ -66,23 +70,47 @@ function readFileAsText(file) {
 
 /**
  * Convert an SRT string to a WebVTT string so that browsers accept it in
- * <track> elements.  Two differences need fixing:
- *   1. Missing "WEBVTT" header
- *   2. Comma decimal separator in timestamps  (00:00:01,500 → 00:00:01.500)
- *   3. <font color="…"> tags are not valid WebVTT — strip the wrapper but
- *      keep the text content; <i>, <b>, <u> are fine and are preserved.
+ * <track> elements.  Fixes applied:
+ *   1. Prepend the required "WEBVTT" header
+ *   2. Comma decimal separator → dot in timestamps  (00:00:01,500 → 00:00:01.500)
+ *   3. Strip <font color="…"> / </font> tags per cue (keep inner text); <i>/<b>/<u> preserved.
+ *      Stripping is done after block-splitting so that empty lines left behind by
+ *      removed tags don't accidentally split the block early.
+ *   4. Leading/trailing blank lines and internal consecutive blank lines in cue text
+ *      cause subtitles to render partially or not at all — strip/collapse them.
  */
 function srtToVtt(srt) {
   // Normalise line endings
-  let vtt = srt.replace(/\r\n?/g, '\n');
+  let text = srt.replace(/\r\n?/g, '\n');
 
-  // Replace timestamp commas with dots  (SRT uses , VTT uses .)
-  vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  // Replace timestamp commas with dots  (SRT → VTT)
+  text = text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
 
-  // Strip <font …> and </font> wrapper tags, keep inner content
-  vtt = vtt.replace(/<font[^>]*>/gi, '').replace(/<\/font>/gi, '');
+  // Split into cue blocks by one or more blank lines
+  const blocks = text.split(/\n{2,}/);
 
-  return 'WEBVTT\n\n' + vtt.trimStart();
+  const cleanedBlocks = blocks.map(block => {
+    const lines = block.split('\n');
+    const tsIdx = lines.findIndex(l => /-->/.test(l));
+    if (tsIdx === -1) return block; // not a cue block (e.g. a plain header)
+
+    const header   = lines.slice(0, tsIdx + 1);
+    const cueLines = lines.slice(tsIdx + 1);
+
+    // Strip <font> tags inside the cue text AFTER isolating the block so
+    // that any empty lines they leave behind stay inside this block.
+    let cueText = cueLines.join('\n');
+    cueText = cueText.replace(/<font[^>]*>/gi, '').replace(/<\/font>/gi, '');
+
+    // Collapse consecutive blank lines and trim leading/trailing whitespace
+    cueText = cueText.replace(/\n{2,}/g, '\n').trim();
+
+    if (!cueText) return null; // drop cues that are now empty
+
+    return [...header, cueText].join('\n');
+  });
+
+  return 'WEBVTT\n\n' + cleanedBlocks.filter(b => b && b.trim()).join('\n\n') + '\n';
 }
 
 /* ── Subtitle rows ───────────────────────────────────────────── */
@@ -311,7 +339,10 @@ const LANG_CODES = {
   german:     'de', chinese:    'zh', japanese:   'ja', korean:     'ko',
   portuguese: 'pt', russian:    'ru', italian:    'it', turkish:    'tr',
   hindi:      'hi', dutch:      'nl', polish:     'pl', swedish:    'sv',
-  indonesian: 'id', vietnamese: 'vi',
+  indonesian: 'id', vietnamese: 'vi', sinhala:    'si', tamil:      'ta',
+  thai:       'th', greek:      'el', hebrew:     'he', ukrainian:  'uk',
+  romanian:   'ro', czech:      'cs', hungarian:  'hu', danish:     'da',
+  finnish:    'fi', norwegian:  'no', malay:      'ms', bengali:    'bn',
 };
 
 /* ── Extra controls ──────────────────────────────────────────── */
@@ -340,4 +371,112 @@ pipBtn.addEventListener('click', async () => {
 
 fullscreenBtn.addEventListener('click', () => {
   if (player) player.requestFullscreen();
+});
+
+/* ── Loop toggle ─────────────────────────────────────────────── */
+loopBtn.addEventListener('click', () => {
+  if (!player) return;
+  const looping = !player.loop();
+  player.loop(looping);
+  loopBtn.classList.toggle('active', looping);
+  loopBtn.title = looping ? 'Loop on — click to turn off' : 'Toggle loop';
+});
+
+/* ── Theater mode ────────────────────────────────────────────── */
+let theaterMode = false;
+theaterBtn.addEventListener('click', () => {
+  theaterMode = !theaterMode;
+  document.querySelector('.container').classList.toggle('theater', theaterMode);
+  theaterBtn.classList.toggle('active', theaterMode);
+  theaterBtn.title = theaterMode ? 'Exit theater mode' : 'Theater mode';
+  if (player) player.dimensions('100%', undefined);
+});
+
+/* ── Keyboard shortcuts panel ────────────────────────────────── */
+shortcutsBtn.addEventListener('click', () => {
+  shortcutsPanel.hidden = !shortcutsPanel.hidden;
+  shortcutsBtn.classList.toggle('active', !shortcutsPanel.hidden);
+});
+
+/* ── Keyboard shortcuts (YouTube-style) ──────────────────────── */
+document.addEventListener('keydown', e => {
+  // Don't fire when typing in an input/textarea
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if (!player) return;
+
+  switch (e.key) {
+    case ' ':
+    case 'k':
+    case 'K':
+      e.preventDefault();
+      player.paused() ? player.play() : player.pause();
+      break;
+
+    case 'ArrowLeft':
+      e.preventDefault();
+      player.currentTime(Math.max(0, player.currentTime() - 5));
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      player.currentTime(Math.min(player.duration() || Infinity, player.currentTime() + 5));
+      break;
+
+    case 'j':
+    case 'J':
+      player.currentTime(Math.max(0, player.currentTime() - 10));
+      break;
+    case 'l':
+    case 'L':
+      player.currentTime(Math.min(player.duration() || Infinity, player.currentTime() + 10));
+      break;
+
+    case 'ArrowUp':
+      e.preventDefault();
+      player.volume(Math.min(1, player.volume() + 0.1));
+      volumeSlider.value = player.volume();
+      volumeDisplay.textContent = `${Math.round(player.volume() * 100)}%`;
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      player.volume(Math.max(0, player.volume() - 0.1));
+      volumeSlider.value = player.volume();
+      volumeDisplay.textContent = `${Math.round(player.volume() * 100)}%`;
+      break;
+
+    case 'm':
+    case 'M':
+      player.muted(!player.muted());
+      break;
+
+    case 'f':
+    case 'F':
+      player.requestFullscreen();
+      break;
+
+    case 'c':
+    case 'C': {
+      // Cycle through subtitle tracks: show first hidden track, or hide all
+      const tracks = Array.from(player.textTracks());
+      const subTracks = tracks.filter(t => t.kind === 'subtitles' || t.kind === 'captions');
+      const showing = subTracks.find(t => t.mode === 'showing');
+      if (showing) {
+        showing.mode = 'hidden';
+      } else if (subTracks.length) {
+        subTracks[0].mode = 'showing';
+      }
+      break;
+    }
+
+    case 't':
+    case 'T':
+      theaterBtn.click();
+      break;
+
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      if (player.duration()) {
+        player.currentTime(player.duration() * parseInt(e.key, 10) / 10);
+      }
+      break;
+  }
 });

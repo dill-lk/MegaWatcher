@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MegaWatcher — Mega.nz Video Player</title>
+
+  <!-- Video.js -->
+  <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
+
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="container">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="20" cy="20" r="20" fill="#e5173f"/>
+          <polygon points="15,12 32,20 15,28" fill="#fff"/>
+        </svg>
+        <span>MegaWatcher</span>
+      </div>
+      <p class="tagline">Stream Mega.nz videos directly in your browser</p>
+    </div>
+  </header>
+
+  <!-- ── Main content ───────────────────────────────────────── -->
+  <main class="container">
+
+    <!-- Link input card -->
+    <section class="card" id="link-section">
+      <h2 class="card-title">Enter Mega Video Link(s)</h2>
+      <p class="card-desc">
+        Paste one or more public Mega.nz file links below. Add a different link
+        for each quality level (e.g. 1080p, 720p, 480p, 360p).
+      </p>
+
+      <!-- Quality rows -->
+      <div id="quality-rows">
+        <!-- Populated by JS -->
+      </div>
+
+      <button class="btn btn-secondary" id="add-quality-btn" type="button">
+        + Add another quality
+      </button>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button class="btn btn-primary" id="load-btn" type="button">
+          ▶ Load &amp; Play
+        </button>
+        <button class="btn btn-ghost" id="reset-btn" type="button">
+          ✕ Reset
+        </button>
+      </div>
+
+      <!-- Status / error message -->
+      <div id="status-msg" class="status-msg" role="alert" aria-live="polite"></div>
+    </section>
+
+    <!-- Player card (hidden until video is loaded) -->
+    <section class="card" id="player-section" hidden>
+      <div class="player-header">
+        <h2 class="card-title" id="video-title">Video</h2>
+        <span class="video-meta" id="video-meta"></span>
+      </div>
+
+      <!-- Video.js player -->
+      <div class="player-wrapper">
+        <video
+          id="mega-player"
+          class="video-js vjs-default-skin vjs-big-play-centered"
+          controls
+          preload="metadata"
+          playsinline
+        >
+          <p class="vjs-no-js">
+            To view this video please enable JavaScript and consider
+            upgrading to a web browser that supports HTML5 video.
+          </p>
+        </video>
+      </div>
+
+      <!-- Custom quality selector -->
+      <div class="quality-bar" id="quality-bar" role="group" aria-label="Quality selector">
+        <!-- Buttons injected by JS -->
+      </div>
+
+      <!-- Playback controls row -->
+      <div class="extra-controls">
+        <label class="control-label" for="playback-speed">Speed</label>
+        <select id="playback-speed" class="control-select">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1× (Normal)</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+
+        <label class="control-label" for="volume-slider">Volume</label>
+        <input type="range" id="volume-slider" class="volume-slider"
+               min="0" max="1" step="0.01" value="1" aria-label="Volume" />
+        <span id="volume-display" class="volume-display">100%</span>
+
+        <button class="btn btn-ghost btn-sm" id="pip-btn" type="button" title="Picture-in-Picture">
+          ⧉ PiP
+        </button>
+        <button class="btn btn-ghost btn-sm" id="fullscreen-btn" type="button" title="Fullscreen">
+          ⛶ Fullscreen
+        </button>
+      </div>
+
+      <button class="btn btn-secondary btn-sm mt-1" id="back-btn" type="button">
+        ← Change links
+      </button>
+    </section>
+
+  </main>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    <div class="container">
+      <p>MegaWatcher &mdash; open-source Mega.nz video player</p>
+    </div>
+  </footer>
+
+  <!-- Video.js runtime -->
+  <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+  <!-- App logic -->
+  <script src="/js/app.js"></script>
+</body>
+</html>

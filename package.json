@@ -1,0 +1,21 @@
+{
+  "name": "megawatcher",
+  "version": "1.0.0",
+  "description": "A website to play Mega.nz video links with quality control",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "megajs": "^1.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "license": "MIT"
+}

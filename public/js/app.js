@@ -54,6 +54,37 @@ function isMegaUrl(url) {
   return /^https?:\/\/(www\.)?mega\.nz\/(file|folder|#)/.test(url.trim());
 }
 
+/** Read a File object as a UTF-8 string. */
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+/**
+ * Convert an SRT string to a WebVTT string so that browsers accept it in
+ * <track> elements.  Two differences need fixing:
+ *   1. Missing "WEBVTT" header
+ *   2. Comma decimal separator in timestamps  (00:00:01,500 → 00:00:01.500)
+ *   3. <font color="…"> tags are not valid WebVTT — strip the wrapper but
+ *      keep the text content; <i>, <b>, <u> are fine and are preserved.
+ */
+function srtToVtt(srt) {
+  // Normalise line endings
+  let vtt = srt.replace(/\r\n?/g, '\n');
+
+  // Replace timestamp commas with dots  (SRT uses , VTT uses .)
+  vtt = vtt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+
+  // Strip <font …> and </font> wrapper tags, keep inner content
+  vtt = vtt.replace(/<font[^>]*>/gi, '').replace(/<\/font>/gi, '');
+
+  return 'WEBVTT\n\n' + vtt.trimStart();
+}
+
 /* ── Subtitle rows ───────────────────────────────────────────── */
 function updateSubCount() {
   const n = subtitleRowsEl.querySelectorAll('.subtitle-row').length;
@@ -171,7 +202,7 @@ loadBtn.addEventListener('click', async () => {
 
     megaUrl = url;
     setStatus('');
-    showPlayer(data);
+    await showPlayer(data);
   } catch (err) {
     setStatus(`Failed to load: ${err.message}`, 'error');
   } finally {
@@ -180,7 +211,7 @@ loadBtn.addEventListener('click', async () => {
 });
 
 /* ── Show player ─────────────────────────────────────────────── */
-function showPlayer(info) {
+async function showPlayer(info) {
   linkSection.hidden = true;
   playerSection.hidden = false;
 
@@ -199,16 +230,27 @@ function showPlayer(info) {
     qualityBar.appendChild(btn);
   });
 
-  // Build subtitle blob URLs from uploaded files
+  // Build subtitle blob URLs — read each file, convert SRT→VTT, create blob
   subtitleBlobUrls.forEach(u => URL.revokeObjectURL(u));
   subtitleBlobUrls = [];
 
-  subtitleTracks = readSubtitleRows().map(r => {
-    const blobUrl = URL.createObjectURL(r.file);
-    subtitleBlobUrls.push(blobUrl);
-    const srclang = LANG_CODES[r.label.toLowerCase()] || 'und';
-    return { label: r.label, src: blobUrl, srclang };
-  });
+  subtitleTracks = await Promise.all(
+    readSubtitleRows().map(async r => {
+      let text = await readFileAsText(r.file);
+
+      // Convert SRT to VTT when the file is .srt (or lacks a WEBVTT header)
+      if (!text.trimStart().startsWith('WEBVTT')) {
+        text = srtToVtt(text);
+      }
+
+      const blob    = new Blob([text], { type: 'text/vtt' });
+      const blobUrl = URL.createObjectURL(blob);
+      subtitleBlobUrls.push(blobUrl);
+
+      const srclang = LANG_CODES[r.label.toLowerCase()] || 'und';
+      return { label: r.label, src: blobUrl, srclang };
+    })
+  );
 
   // Init (or re-init) Video.js
   if (player) player.dispose();

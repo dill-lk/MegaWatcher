@@ -15,7 +15,7 @@
 
   <!-- ── Header ─────────────────────────────────────────────── -->
   <header class="site-header">
-    <div class="container">
+    <div class="container header-inner">
       <div class="logo">
         <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <circle cx="20" cy="20" r="20" fill="#e5173f"/>
@@ -23,7 +23,7 @@
         </svg>
         <span>MegaWatcher</span>
       </div>
-      <p class="tagline">Stream Mega.nz videos directly in your browser</p>
+      <p class="tagline">Stream Mega.nz videos in any quality</p>
     </div>
   </header>
 
@@ -32,20 +32,83 @@
 
     <!-- Link input card -->
     <section class="card" id="link-section">
-      <h2 class="card-title">Enter Mega Video Link(s)</h2>
+      <h2 class="card-title">Paste your Mega.nz video link</h2>
       <p class="card-desc">
-        Paste one or more public Mega.nz file links below. Add a different link
-        for each quality level (e.g. 1080p, 720p, 480p, 360p).
+        Enter a public Mega.nz file link. Choose to stream it at
+        <strong>Original</strong>, <strong>480p</strong>, <strong>360p</strong>,
+        <strong>240p</strong>, or <strong>144p</strong> — the server converts it
+        on the fly to save your data.
       </p>
 
-      <!-- Quality rows -->
-      <div id="quality-rows">
-        <!-- Populated by JS -->
+      <!-- URL input -->
+      <div class="url-input-wrap">
+        <input
+          type="url"
+          id="mega-url"
+          class="url-input"
+          placeholder="https://mega.nz/file/…"
+          autocomplete="off"
+          spellcheck="false"
+        />
       </div>
 
-      <button class="btn btn-secondary" id="add-quality-btn" type="button">
-        + Add another quality
-      </button>
+      <!-- Subtitle upload (collapsible) -->
+      <details class="subtitle-section" id="subtitle-details">
+        <summary class="subtitle-summary">
+          <svg class="sub-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M2 5a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1zm0 5a1 1 0 011-1h10a1 1 0 110 2H3a1 1 0 01-1-1zm0 5a1 1 0 011-1h6a1 1 0 110 2H3a1 1 0 01-1-1z"/>
+          </svg>
+          Subtitles
+          <span class="sub-count" id="sub-count"></span>
+          <span class="sub-arrow" aria-hidden="true">›</span>
+        </summary>
+        <div class="subtitle-body">
+          <p class="sub-hint">
+            Upload <code>.srt</code> or <code>.vtt</code> files for any language.
+            They load automatically in the player for every quality option.
+          </p>
+          <div id="subtitle-rows"></div>
+          <button class="btn btn-secondary btn-sm" id="add-subtitle-btn" type="button">
+            + Add language
+          </button>
+        </div>
+      </details>
+
+      <!-- Language suggestions (used by sub-lang inputs) -->
+      <datalist id="lang-list">
+        <option value="English">
+        <option value="Arabic">
+        <option value="French">
+        <option value="Spanish">
+        <option value="German">
+        <option value="Chinese">
+        <option value="Japanese">
+        <option value="Korean">
+        <option value="Portuguese">
+        <option value="Russian">
+        <option value="Italian">
+        <option value="Turkish">
+        <option value="Hindi">
+        <option value="Dutch">
+        <option value="Polish">
+        <option value="Swedish">
+        <option value="Indonesian">
+        <option value="Vietnamese">
+        <option value="Sinhala">
+        <option value="Tamil">
+        <option value="Thai">
+        <option value="Greek">
+        <option value="Hebrew">
+        <option value="Ukrainian">
+        <option value="Romanian">
+        <option value="Czech">
+        <option value="Hungarian">
+        <option value="Danish">
+        <option value="Finnish">
+        <option value="Norwegian">
+        <option value="Malay">
+        <option value="Bengali">
+      </datalist>
 
       <!-- Actions -->
       <div class="actions">
@@ -84,10 +147,16 @@
         </video>
       </div>
 
-      <!-- Custom quality selector -->
+      <!-- Quality selector -->
       <div class="quality-bar" id="quality-bar" role="group" aria-label="Quality selector">
-        <!-- Buttons injected by JS -->
+        <!-- Injected by JS -->
       </div>
+
+      <!-- Transcoding notice -->
+      <p class="transcode-notice" id="transcode-notice" hidden>
+        ⚡ The server is transcoding this quality — playback starts once enough
+        data has buffered. Seeking is limited in this mode.
+      </p>
 
       <!-- Playback controls row -->
       <div class="extra-controls">
@@ -107,16 +176,40 @@
                min="0" max="1" step="0.01" value="1" aria-label="Volume" />
         <span id="volume-display" class="volume-display">100%</span>
 
+        <button class="btn btn-ghost btn-sm" id="loop-btn" type="button" title="Toggle loop">
+          ↺ Loop
+        </button>
+        <button class="btn btn-ghost btn-sm" id="theater-btn" type="button" title="Theater mode">
+          ▭ Theater
+        </button>
         <button class="btn btn-ghost btn-sm" id="pip-btn" type="button" title="Picture-in-Picture">
           ⧉ PiP
         </button>
         <button class="btn btn-ghost btn-sm" id="fullscreen-btn" type="button" title="Fullscreen">
           ⛶ Fullscreen
         </button>
+        <button class="btn btn-ghost btn-sm" id="shortcuts-btn" type="button" title="Keyboard shortcuts">
+          ⌨ Shortcuts
+        </button>
+      </div>
+
+      <!-- Keyboard shortcuts panel (hidden by default) -->
+      <div class="shortcuts-panel" id="shortcuts-panel" hidden>
+        <div class="shortcuts-grid">
+          <span class="sk">Space / K</span><span>Play / Pause</span>
+          <span class="sk">← / →</span><span>Seek −5 s / +5 s</span>
+          <span class="sk">J / L</span><span>Seek −10 s / +10 s</span>
+          <span class="sk">↑ / ↓</span><span>Volume +10 % / −10 %</span>
+          <span class="sk">M</span><span>Mute / Unmute</span>
+          <span class="sk">F</span><span>Fullscreen</span>
+          <span class="sk">C</span><span>Toggle captions</span>
+          <span class="sk">T</span><span>Theater mode</span>
+          <span class="sk">0 – 9</span><span>Jump to 0 %–90 % of video</span>
+        </div>
       </div>
 
       <button class="btn btn-secondary btn-sm mt-1" id="back-btn" type="button">
-        ← Change links
+        ← Change link
       </button>
     </section>
 

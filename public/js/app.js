@@ -1,35 +1,45 @@
 'use strict';
 
-/* ── Constants ───────────────────────────────────────────────── */
-const DEFAULT_QUALITIES = [
-  { label: '1080p', url: '' },
-  { label: '720p',  url: '' },
-  { label: '480p',  url: '' },
-  { label: '360p',  url: '' },
+/* ── Quality levels (auto-generated from one URL) ────────────── */
+const QUALITY_LEVELS = [
+  { label: 'Original', transcode: null,    title: 'Stream at source quality (full seeking)' },
+  { label: '480p',     transcode: '480p',  title: 'Standard quality — saves some data' },
+  { label: '360p',     transcode: '360p',  title: 'Lower quality — saves more data' },
+  { label: '240p',     transcode: '240p',  title: 'Low quality — saves a lot of data' },
+  { label: '144p',     transcode: '144p',  title: 'Minimum quality — saves maximum data' },
 ];
 
 /* ── State ───────────────────────────────────────────────────── */
-let player = null;          // Video.js instance
-let currentQualityIndex = -1;
-let qualities = [];         // [{ label, url, streamUrl, name, size }]
+let player             = null;   // Video.js instance
+let currentQualityIdx  = -1;
+let megaUrl            = '';
+let subtitleBlobUrls   = [];     // revoke on reset to avoid memory leaks
+let subtitleTracks     = [];     // { label, src, srclang } — shared across quality switches
 
 /* ── DOM refs ────────────────────────────────────────────────── */
-const qualityRowsEl  = document.getElementById('quality-rows');
-const addQualityBtn  = document.getElementById('add-quality-btn');
-const loadBtn        = document.getElementById('load-btn');
-const resetBtn       = document.getElementById('reset-btn');
-const statusMsg      = document.getElementById('status-msg');
-const linkSection    = document.getElementById('link-section');
-const playerSection  = document.getElementById('player-section');
-const videoTitleEl   = document.getElementById('video-title');
-const videoMetaEl    = document.getElementById('video-meta');
-const qualityBar     = document.getElementById('quality-bar');
-const speedSelect    = document.getElementById('playback-speed');
-const volumeSlider   = document.getElementById('volume-slider');
-const volumeDisplay  = document.getElementById('volume-display');
-const pipBtn         = document.getElementById('pip-btn');
-const fullscreenBtn  = document.getElementById('fullscreen-btn');
-const backBtn        = document.getElementById('back-btn');
+const megaUrlInput    = document.getElementById('mega-url');
+const loadBtn         = document.getElementById('load-btn');
+const resetBtn        = document.getElementById('reset-btn');
+const statusMsg       = document.getElementById('status-msg');
+const linkSection     = document.getElementById('link-section');
+const playerSection   = document.getElementById('player-section');
+const videoTitleEl    = document.getElementById('video-title');
+const videoMetaEl     = document.getElementById('video-meta');
+const qualityBar      = document.getElementById('quality-bar');
+const transcodeNotice = document.getElementById('transcode-notice');
+const speedSelect     = document.getElementById('playback-speed');
+const volumeSlider    = document.getElementById('volume-slider');
+const volumeDisplay   = document.getElementById('volume-display');
+const pipBtn          = document.getElementById('pip-btn');
+const fullscreenBtn   = document.getElementById('fullscreen-btn');
+const loopBtn         = document.getElementById('loop-btn');
+const theaterBtn      = document.getElementById('theater-btn');
+const shortcutsBtn    = document.getElementById('shortcuts-btn');
+const shortcutsPanel  = document.getElementById('shortcuts-panel');
+const backBtn         = document.getElementById('back-btn');
+const subtitleRowsEl  = document.getElementById('subtitle-rows');
+const addSubtitleBtn  = document.getElementById('add-subtitle-btn');
+const subCount        = document.getElementById('sub-count');
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 function formatBytes(bytes) {
@@ -48,72 +58,140 @@ function isMegaUrl(url) {
   return /^https?:\/\/(www\.)?mega\.nz\/(file|folder|#)/.test(url.trim());
 }
 
-/* ── Quality row builder ─────────────────────────────────────── */
-function buildQualityRow(label = '', url = '', index = 0) {
+/** Read a File object as a UTF-8 string. */
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+/**
+ * Convert an SRT string to a WebVTT string so that browsers accept it in
+ * <track> elements.  Fixes applied:
+ *   1. Prepend the required "WEBVTT" header
+ *   2. Comma decimal separator → dot in timestamps  (00:00:01,500 → 00:00:01.500)
+ *   3. Strip <font color="…"> / </font> tags per cue (keep inner text); <i>/<b>/<u> preserved.
+ *      Stripping is done after block-splitting so that empty lines left behind by
+ *      removed tags don't accidentally split the block early.
+ *   4. Leading/trailing blank lines and internal consecutive blank lines in cue text
+ *      cause subtitles to render partially or not at all — strip/collapse them.
+ */
+function srtToVtt(srt) {
+  // Normalise line endings
+  let text = srt.replace(/\r\n?/g, '\n');
+
+  // Replace timestamp commas with dots  (SRT → VTT)
+  text = text.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+
+  // Split into cue blocks by one or more blank lines
+  const blocks = text.split(/\n{2,}/);
+
+  const cleanedBlocks = blocks.map(block => {
+    const lines = block.split('\n');
+    const tsIdx = lines.findIndex(l => /-->/.test(l));
+    if (tsIdx === -1) return block; // not a cue block (e.g. a plain header)
+
+    const header   = lines.slice(0, tsIdx + 1);
+    const cueLines = lines.slice(tsIdx + 1);
+
+    // Strip <font> tags inside the cue text AFTER isolating the block so
+    // that any empty lines they leave behind stay inside this block.
+    let cueText = cueLines.join('\n');
+    cueText = cueText.replace(/<font[^>]*>/gi, '').replace(/<\/font>/gi, '');
+
+    // Collapse consecutive blank lines and trim leading/trailing whitespace
+    cueText = cueText.replace(/\n{2,}/g, '\n').trim();
+
+    if (!cueText) return null; // drop cues that are now empty
+
+    return [...header, cueText].join('\n');
+  });
+
+  return 'WEBVTT\n\n' + cleanedBlocks.filter(b => b && b.trim()).join('\n\n') + '\n';
+}
+
+/* ── Subtitle rows ───────────────────────────────────────────── */
+function updateSubCount() {
+  const n = subtitleRowsEl.querySelectorAll('.subtitle-row').length;
+  subCount.textContent = n > 0 ? `(${n})` : '';
+}
+
+function addSubtitleRow() {
   const row = document.createElement('div');
-  row.className = 'quality-row';
-  row.dataset.index = index;
+  row.className = 'subtitle-row';
 
-  const labelInput = document.createElement('input');
-  labelInput.type = 'text';
-  labelInput.className = 'quality-label-input';
-  labelInput.placeholder = 'Label';
-  labelInput.value = label;
-  labelInput.setAttribute('aria-label', 'Quality label');
+  const langInput = document.createElement('input');
+  langInput.type = 'text';
+  langInput.className = 'sub-lang-input';
+  langInput.placeholder = 'Language (e.g. English)';
+  langInput.setAttribute('aria-label', 'Subtitle language');
+  langInput.setAttribute('list', 'lang-list');
 
-  const urlInput = document.createElement('input');
-  urlInput.type = 'url';
-  urlInput.className = 'quality-url-input';
-  urlInput.placeholder = 'https://mega.nz/file/…';
-  urlInput.value = url;
-  urlInput.setAttribute('aria-label', 'Mega URL');
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.className = 'sub-file-input';
+  fileInput.accept = '.srt,.vtt';
+  fileInput.setAttribute('aria-label', 'Subtitle file (.srt or .vtt)');
 
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'remove-row-btn';
-  removeBtn.title = 'Remove this quality';
+  removeBtn.title = 'Remove';
   removeBtn.innerHTML = '&times;';
-  removeBtn.addEventListener('click', () => {
-    row.remove();
-    reindexRows();
-  });
+  removeBtn.addEventListener('click', () => { row.remove(); updateSubCount(); });
 
-  row.appendChild(labelInput);
-  row.appendChild(urlInput);
+  row.appendChild(langInput);
+  row.appendChild(fileInput);
   row.appendChild(removeBtn);
-  return row;
+  subtitleRowsEl.appendChild(row);
+  updateSubCount();
 }
 
-function reindexRows() {
-  document.querySelectorAll('.quality-row').forEach((row, i) => {
-    row.dataset.index = i;
+addSubtitleBtn.addEventListener('click', addSubtitleRow);
+
+function readSubtitleRows() {
+  return Array.from(subtitleRowsEl.querySelectorAll('.subtitle-row'))
+    .map(row => ({
+      label: row.querySelector('.sub-lang-input').value.trim() || 'Unknown',
+      file:  row.querySelector('.sub-file-input').files[0] || null,
+    }))
+    .filter(r => r.file !== null);
+}
+
+/* ── Attach subtitle text tracks to the player ───────────────── */
+function attachSubtitleTracks() {
+  if (!player) return;
+
+  // Remove any existing remote text tracks
+  Array.from(player.remoteTextTracks()).forEach(t => player.removeRemoteTextTrack(t));
+
+  subtitleTracks.forEach((t, i) => {
+    player.addRemoteTextTrack({
+      kind:    'subtitles',
+      src:     t.src,
+      label:   t.label,
+      srclang: t.srclang,
+      default: i === 0,
+    }, false);
   });
 }
-
-function addRow(label = '', url = '') {
-  const rows = document.querySelectorAll('.quality-row');
-  qualityRowsEl.appendChild(buildQualityRow(label, url, rows.length));
-}
-
-function readRows() {
-  return Array.from(document.querySelectorAll('.quality-row')).map(row => ({
-    label: row.querySelector('.quality-label-input').value.trim(),
-    url:   row.querySelector('.quality-url-input').value.trim(),
-  }));
-}
-
-/* ── Initialise default rows ─────────────────────────────────── */
-DEFAULT_QUALITIES.forEach(q => addRow(q.label, q.url));
-
-/* ── Add quality button ──────────────────────────────────────── */
-addQualityBtn.addEventListener('click', () => addRow('Custom', ''));
 
 /* ── Reset ───────────────────────────────────────────────────── */
 function resetApp() {
   if (player) { player.dispose(); player = null; }
-  qualities = [];
-  currentQualityIndex = -1;
+
+  // Revoke blob URLs to free memory
+  subtitleBlobUrls.forEach(u => URL.revokeObjectURL(u));
+  subtitleBlobUrls = [];
+  subtitleTracks   = [];
+
+  currentQualityIdx = -1;
+  megaUrl = '';
   qualityBar.innerHTML = '';
+  transcodeNotice.hidden = true;
   setStatus('');
   playerSection.hidden = true;
   linkSection.hidden = false;
@@ -124,94 +202,86 @@ backBtn.addEventListener('click', resetApp);
 
 /* ── Load & play ─────────────────────────────────────────────── */
 loadBtn.addEventListener('click', async () => {
-  const rows = readRows().filter(r => r.url !== '');
+  const url = megaUrlInput.value.trim();
 
-  if (rows.length === 0) {
-    setStatus('Please enter at least one Mega link.', 'error');
+  if (!url) {
+    setStatus('Please enter a Mega.nz link.', 'error');
     return;
   }
 
-  // Validate URLs
-  let valid = true;
-  document.querySelectorAll('.quality-url-input').forEach(input => {
-    const val = input.value.trim();
-    if (val && !isMegaUrl(val)) {
-      input.classList.add('error');
-      valid = false;
-    } else {
-      input.classList.remove('error');
-    }
-  });
-
-  if (!valid) {
-    setStatus('One or more URLs do not look like Mega.nz links. Please check them.', 'error');
+  if (!isMegaUrl(url)) {
+    megaUrlInput.classList.add('error');
+    setStatus('This does not look like a Mega.nz link. Please check it.', 'error');
     return;
   }
 
+  megaUrlInput.classList.remove('error');
   loadBtn.disabled = true;
   setStatus('<span class="spinner"></span>Loading video info…', 'loading');
 
-  // Fetch file metadata for each non-empty row in parallel
-  const results = await Promise.all(
-    rows.map(async row => {
-      try {
-        const resp = await fetch('/api/mega-info', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: row.url }),
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || 'Unknown error');
-        return { ...row, name: data.name, size: data.size, error: null };
-      } catch (err) {
-        return { ...row, name: null, size: null, error: err.message };
-      }
-    })
-  );
+  try {
+    const resp = await fetch('/api/mega-info', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Unknown error');
 
-  loadBtn.disabled = false;
-
-  const errors = results.filter(r => r.error);
-  if (errors.length > 0) {
-    setStatus(
-      `Failed to load ${errors.length} link(s):<br>${errors.map(e => `• ${e.label}: ${e.error}`).join('<br>')}`,
-      'error'
-    );
-    return;
+    megaUrl = url;
+    setStatus('');
+    await showPlayer(data);
+  } catch (err) {
+    setStatus(`Failed to load: ${err.message}`, 'error');
+  } finally {
+    loadBtn.disabled = false;
   }
-
-  qualities = results.map(r => ({
-    ...r,
-    streamUrl: `/api/stream?url=${encodeURIComponent(r.url)}`,
-  }));
-
-  setStatus('');
-  showPlayer();
 });
 
 /* ── Show player ─────────────────────────────────────────────── */
-function showPlayer() {
+async function showPlayer(info) {
   linkSection.hidden = true;
   playerSection.hidden = false;
 
-  // Title & meta from the first (highest) quality
-  const primary = qualities[0];
-  videoTitleEl.textContent = primary.name || 'Video';
-  videoMetaEl.textContent  = primary.size ? formatBytes(primary.size) : '';
+  videoTitleEl.textContent = info.name || 'Video';
+  videoMetaEl.textContent  = info.size ? formatBytes(info.size) : '';
 
-  // Build quality bar
+  // Build quality buttons
   qualityBar.innerHTML = '';
-  qualities.forEach((q, i) => {
+  QUALITY_LEVELS.forEach((q, i) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'quality-btn';
-    btn.textContent = q.label || `Source ${i + 1}`;
+    btn.textContent = q.label;
+    btn.title = q.title;
     btn.addEventListener('click', () => switchQuality(i));
     qualityBar.appendChild(btn);
   });
 
-  // Init Video.js player
-  if (player) { player.dispose(); }
+  // Build subtitle blob URLs — read each file, convert SRT→VTT, create blob
+  subtitleBlobUrls.forEach(u => URL.revokeObjectURL(u));
+  subtitleBlobUrls = [];
+
+  subtitleTracks = await Promise.all(
+    readSubtitleRows().map(async r => {
+      let text = await readFileAsText(r.file);
+
+      // Convert SRT to VTT when the file is .srt (or lacks a WEBVTT header)
+      if (!text.trimStart().startsWith('WEBVTT')) {
+        text = srtToVtt(text);
+      }
+
+      const blob    = new Blob([text], { type: 'text/vtt' });
+      const blobUrl = URL.createObjectURL(blob);
+      subtitleBlobUrls.push(blobUrl);
+
+      const srclang = LANG_CODES[r.label.toLowerCase()] || 'und';
+      return { label: r.label, src: blobUrl, srclang };
+    })
+  );
+
+  // Init (or re-init) Video.js
+  if (player) player.dispose();
   player = videojs('mega-player', {
     controls: true,
     preload: 'metadata',
@@ -224,39 +294,56 @@ function showPlayer() {
     },
   });
 
-  // Set initial volume from slider
   player.volume(parseFloat(volumeSlider.value));
 
-  // Load the first quality
+  // Start at Original quality
   switchQuality(0);
 }
 
 /* ── Quality switching ───────────────────────────────────────── */
 function switchQuality(index) {
-  if (!player || index === currentQualityIndex) return;
+  if (!player || index === currentQualityIdx) return;
 
-  const q = qualities[index];
-  const currentTime = currentQualityIndex >= 0 ? player.currentTime() : 0;
-  const wasPaused   = currentQualityIndex >= 0 ? player.paused() : false;
+  const q = QUALITY_LEVELS[index];
+  const currentTime = currentQualityIdx >= 0 ? player.currentTime() : 0;
+  const wasPaused   = currentQualityIdx >= 0 ? player.paused() : false;
 
-  currentQualityIndex = index;
+  currentQualityIdx = index;
 
-  // Update active button
+  // Highlight active button
   document.querySelectorAll('.quality-btn').forEach((btn, i) => {
     btn.classList.toggle('active', i === index);
   });
 
-  // Update video source
-  player.src({ src: q.streamUrl, type: 'video/mp4' });
+  // Show transcoding notice for non-original qualities
+  transcodeNotice.hidden = !q.transcode;
 
-  // Restore playback position after metadata loads
+  // Build stream URL
+  let streamUrl = `/api/stream?url=${encodeURIComponent(megaUrl)}`;
+  if (q.transcode) streamUrl += `&transcode=${q.transcode}`;
+
+  player.src({ src: streamUrl, type: 'video/mp4' });
+
   player.one('loadedmetadata', () => {
     if (currentTime > 0) player.currentTime(currentTime);
     if (!wasPaused) player.play();
+    attachSubtitleTracks();
   });
 
   player.load();
 }
+
+/* ── Language code map (label → BCP-47 tag) ─────────────────── */
+const LANG_CODES = {
+  english:    'en', arabic:     'ar', french:     'fr', spanish:    'es',
+  german:     'de', chinese:    'zh', japanese:   'ja', korean:     'ko',
+  portuguese: 'pt', russian:    'ru', italian:    'it', turkish:    'tr',
+  hindi:      'hi', dutch:      'nl', polish:     'pl', swedish:    'sv',
+  indonesian: 'id', vietnamese: 'vi', sinhala:    'si', tamil:      'ta',
+  thai:       'th', greek:      'el', hebrew:     'he', ukrainian:  'uk',
+  romanian:   'ro', czech:      'cs', hungarian:  'hu', danish:     'da',
+  finnish:    'fi', norwegian:  'no', malay:      'ms', bengali:    'bn',
+};
 
 /* ── Extra controls ──────────────────────────────────────────── */
 speedSelect.addEventListener('change', () => {
@@ -271,17 +358,12 @@ volumeSlider.addEventListener('input', () => {
 
 pipBtn.addEventListener('click', async () => {
   const videoEl = document.getElementById('mega-player_html5_api')
-                  || document.querySelector('#mega-player video');
+               || document.querySelector('#mega-player video');
   if (videoEl && document.pictureInPictureEnabled) {
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        await videoEl.requestPictureInPicture();
-      }
-    } catch (e) {
-      console.warn('PiP error:', e);
-    }
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await videoEl.requestPictureInPicture();
+    } catch (e) { console.warn('PiP error:', e); }
   } else {
     alert('Picture-in-Picture is not supported by your browser.');
   }
@@ -289,4 +371,112 @@ pipBtn.addEventListener('click', async () => {
 
 fullscreenBtn.addEventListener('click', () => {
   if (player) player.requestFullscreen();
+});
+
+/* ── Loop toggle ─────────────────────────────────────────────── */
+loopBtn.addEventListener('click', () => {
+  if (!player) return;
+  const looping = !player.loop();
+  player.loop(looping);
+  loopBtn.classList.toggle('active', looping);
+  loopBtn.title = looping ? 'Loop on — click to turn off' : 'Toggle loop';
+});
+
+/* ── Theater mode ────────────────────────────────────────────── */
+let theaterMode = false;
+theaterBtn.addEventListener('click', () => {
+  theaterMode = !theaterMode;
+  document.querySelector('.container').classList.toggle('theater', theaterMode);
+  theaterBtn.classList.toggle('active', theaterMode);
+  theaterBtn.title = theaterMode ? 'Exit theater mode' : 'Theater mode';
+  if (player) player.dimensions('100%', undefined);
+});
+
+/* ── Keyboard shortcuts panel ────────────────────────────────── */
+shortcutsBtn.addEventListener('click', () => {
+  shortcutsPanel.hidden = !shortcutsPanel.hidden;
+  shortcutsBtn.classList.toggle('active', !shortcutsPanel.hidden);
+});
+
+/* ── Keyboard shortcuts (YouTube-style) ──────────────────────── */
+document.addEventListener('keydown', e => {
+  // Don't fire when typing in an input/textarea
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if (!player) return;
+
+  switch (e.key) {
+    case ' ':
+    case 'k':
+    case 'K':
+      e.preventDefault();
+      player.paused() ? player.play() : player.pause();
+      break;
+
+    case 'ArrowLeft':
+      e.preventDefault();
+      player.currentTime(Math.max(0, player.currentTime() - 5));
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      player.currentTime(Math.min(player.duration() || Infinity, player.currentTime() + 5));
+      break;
+
+    case 'j':
+    case 'J':
+      player.currentTime(Math.max(0, player.currentTime() - 10));
+      break;
+    case 'l':
+    case 'L':
+      player.currentTime(Math.min(player.duration() || Infinity, player.currentTime() + 10));
+      break;
+
+    case 'ArrowUp':
+      e.preventDefault();
+      player.volume(Math.min(1, player.volume() + 0.1));
+      volumeSlider.value = player.volume();
+      volumeDisplay.textContent = `${Math.round(player.volume() * 100)}%`;
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      player.volume(Math.max(0, player.volume() - 0.1));
+      volumeSlider.value = player.volume();
+      volumeDisplay.textContent = `${Math.round(player.volume() * 100)}%`;
+      break;
+
+    case 'm':
+    case 'M':
+      player.muted(!player.muted());
+      break;
+
+    case 'f':
+    case 'F':
+      player.requestFullscreen();
+      break;
+
+    case 'c':
+    case 'C': {
+      // Cycle through subtitle tracks: show first hidden track, or hide all
+      const tracks = Array.from(player.textTracks());
+      const subTracks = tracks.filter(t => t.kind === 'subtitles' || t.kind === 'captions');
+      const showing = subTracks.find(t => t.mode === 'showing');
+      if (showing) {
+        showing.mode = 'hidden';
+      } else if (subTracks.length) {
+        subTracks[0].mode = 'showing';
+      }
+      break;
+    }
+
+    case 't':
+    case 'T':
+      theaterBtn.click();
+      break;
+
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      if (player.duration()) {
+        player.currentTime(player.duration() * parseInt(e.key, 10) / 10);
+      }
+      break;
+  }
 });

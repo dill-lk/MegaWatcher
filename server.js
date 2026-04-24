@@ -3,6 +3,20 @@
 const express = require('express');
 const { File } = require('megajs');
 const path = require('path');
+const { spawn } = require('child_process');
+const rateLimit = require('express-rate-limit');
+
+// Supported transcode resolutions (height in pixels)
+const TRANSCODE_HEIGHTS = { '480p': 480, '360p': 360, '240p': 240, '144p': 144 };
+
+// Limit stream requests to prevent runaway ffmpeg processes
+const streamLimiter = rateLimit({
+  windowMs: 60 * 1000,  // 1 minute
+  max: 20,              // max 20 stream requests per IP per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many stream requests — please wait a moment.' },
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,12 +49,17 @@ app.post('/api/mega-info', async (req, res) => {
 });
 
 /**
- * GET /api/stream?url=<encoded mega url>
- * Streams the Mega file to the client, supporting HTTP Range requests for
- * seek / quality-switching behaviour in the video player.
+ * GET /api/stream?url=<encoded mega url>[&transcode=480p|360p|240p|144p]
+ *
+ * Without `transcode`: streams the original file with HTTP Range support
+ * (enables seeking in the player).
+ *
+ * With `transcode`: pipes Mega → ffmpeg → client in a fragmented MP4 stream
+ * at the requested height. Range requests are not honoured in this mode
+ * because the output size is unknown before encoding completes.
  */
-app.get('/api/stream', async (req, res) => {
-  const { url } = req.query;
+app.get('/api/stream', streamLimiter, async (req, res) => {
+  const { url, transcode } = req.query;
 
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'A Mega URL is required.' });
@@ -54,6 +73,45 @@ app.get('/api/stream', async (req, res) => {
     return res.status(400).json({ error: `Failed to load Mega file: ${err.message}` });
   }
 
+  // ── Transcoded mode (ffmpeg) ────────────────────────────────────────────
+  if (transcode && TRANSCODE_HEIGHTS[transcode]) {
+    const height = TRANSCODE_HEIGHTS[transcode];
+
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Cache-Control': 'no-cache',
+    });
+
+    const megaStream = file.download();
+    const ff = spawn('ffmpeg', [
+      '-i', 'pipe:0',
+      '-vf', `scale=-2:${height}`,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '28',
+      '-c:a', 'aac',
+      '-b:a', '96k',
+      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+      '-f', 'mp4',
+      'pipe:1',
+    ], { stdio: ['pipe', 'pipe', 'ignore'] });
+
+    megaStream.pipe(ff.stdin);
+    ff.stdout.pipe(res);
+
+    const killFf = () => {
+      try {
+        ff.kill('SIGTERM');
+        setTimeout(() => { try { ff.kill('SIGKILL'); } catch (_) {} }, 3000);
+      } catch (_) {}
+    };
+    res.on('close', killFf);
+    ff.on('error', killFf);
+    megaStream.on('error', () => { killFf(); if (!res.writableEnded) res.end(); });
+    return;
+  }
+
+  // ── Direct stream (with HTTP Range support) ─────────────────────────────
   const fileSize = file.size;
   const rangeHeader = req.headers.range;
 

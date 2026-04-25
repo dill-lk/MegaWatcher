@@ -17,7 +17,9 @@
   --transition: 180ms ease;
 }
 
-html { font-size: 16px; }
+html { font-size: 16px; scroll-behavior: smooth; }
+
+::selection { background: rgba(229,23,63,.35); color: var(--text); }
 
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -39,9 +41,10 @@ body {
 
 /* ── Header ─────────────────────────────────────────────────── */
 .site-header {
-  background: var(--bg2);
+  background: linear-gradient(135deg, var(--bg2) 0%, #1a0a0e 100%);
   border-bottom: 2px solid var(--red);
   padding: 1.1rem 0;
+  box-shadow: 0 2px 16px rgba(229,23,63,.18);
 }
 
 .header-inner {
@@ -59,6 +62,7 @@ body {
   font-weight: 700;
   letter-spacing: -.5px;
   color: var(--text);
+  text-shadow: 0 0 20px rgba(229,23,63,.35);
 }
 
 .logo-icon { width: 36px; height: 36px; flex-shrink: 0; }
@@ -85,6 +89,12 @@ main {
   border-radius: var(--radius);
   padding: 1.75rem;
   box-shadow: var(--shadow);
+  animation: cardIn 200ms ease both;
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .card-title {
@@ -278,8 +288,9 @@ details[open] .sub-arrow { transform: rotate(90deg); }
   background: var(--red);
   color: #fff;
   border-color: var(--red);
+  box-shadow: 0 2px 10px rgba(229,23,63,.3);
 }
-.btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark); }
+.btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark); box-shadow: 0 4px 16px rgba(229,23,63,.45); }
 
 .btn-secondary {
   background: var(--bg3);
@@ -336,7 +347,12 @@ details[open] .sub-arrow { transform: rotate(90deg); }
   border-radius: 8px;
   background: #000;
   position: relative;
-  box-shadow: 0 0 0 1px var(--border);
+  box-shadow: 0 0 0 1px var(--border), 0 4px 32px rgba(0,0,0,.7);
+  transition: box-shadow 300ms ease;
+}
+
+.player-wrapper:focus-within {
+  box-shadow: 0 0 0 1px var(--red), 0 0 24px rgba(229,23,63,.18);
 }
 
 #mega-player {
@@ -408,18 +424,20 @@ details[open] .sub-arrow { transform: rotate(90deg); }
   cursor: pointer;
   letter-spacing: .3px;
   transition: background var(--transition), color var(--transition),
-              border-color var(--transition);
+              border-color var(--transition), box-shadow var(--transition);
 }
 
 .quality-btn:hover {
   color: var(--text);
   border-color: var(--border-hi);
+  background: var(--border);
 }
 
 .quality-btn.active {
   background: var(--red);
   border-color: var(--red);
   color: #fff;
+  box-shadow: 0 0 10px rgba(229,23,63,.45);
 }
 
 /* ── Transcode notice ───────────────────────────────────────── */
@@ -501,22 +519,42 @@ details[open] .sub-arrow { transform: rotate(90deg); }
 
 /* ── Footer ─────────────────────────────────────────────────── */
 .site-footer {
-  background: var(--bg2);
+  background: linear-gradient(135deg, var(--bg2) 0%, #1a0a0e 100%);
   border-top: 1px solid var(--border);
   padding: 1rem 0;
   text-align: center;
   color: var(--text-muted);
   font-size: .8rem;
+  transition: opacity 300ms ease;
 }
 
 /* ── Theater mode ───────────────────────────────────────────── */
-.container.theater {
+main.theater {
   max-width: 100%;
-  padding: 0 .5rem;
+  padding: 0;
 }
 
-.container.theater .player-wrapper {
+main.theater .player-wrapper {
   border-radius: 0;
+}
+
+/* Theater mode body overrides */
+body.theater-mode .site-header,
+body.theater-mode .site-footer {
+  opacity: 0.25;
+  transition: opacity 300ms ease;
+}
+
+body.theater-mode .site-header:hover,
+body.theater-mode .site-footer:hover {
+  opacity: 1;
+}
+
+body.theater-mode #player-section {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  box-shadow: none;
 }
 
 /* ── Active state for toggle buttons ───────────────────────── */
@@ -572,6 +610,14 @@ details[open] .sub-arrow { transform: rotate(90deg); }
 @media (max-width: 600px) {
   .subtitle-row { flex-direction: column; align-items: stretch; }
   .sub-lang-input { width: 100%; }
-  .extra-controls { flex-direction: column; align-items: flex-start; }
+  .extra-controls { flex-direction: column; align-items: flex-start; gap: .5rem; }
   .tagline { display: none; }
+  .quality-bar { gap: .3rem; }
+  .quality-btn { font-size: .72rem; padding: .25rem .65rem; }
+  .card { padding: 1.25rem; }
+}
+
+@media (max-width: 400px) {
+  .btn { font-size: .82rem; padding: .5rem .9rem; }
+  .btn-sm { font-size: .75rem; padding: .35rem .7rem; }
 }

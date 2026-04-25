@@ -188,6 +188,15 @@ function resetApp() {
   subtitleBlobUrls = [];
   subtitleTracks   = [];
 
+  // Exit theater mode
+  if (theaterMode) {
+    theaterMode = false;
+    document.querySelector('main').classList.remove('theater');
+    document.body.classList.remove('theater-mode');
+    theaterBtn.classList.remove('active');
+    theaterBtn.title = 'Theater mode';
+  }
+
   currentQualityIdx = -1;
   megaUrl = '';
   qualityBar.innerHTML = '';
@@ -386,10 +395,11 @@ loopBtn.addEventListener('click', () => {
 let theaterMode = false;
 theaterBtn.addEventListener('click', () => {
   theaterMode = !theaterMode;
-  document.querySelector('.container').classList.toggle('theater', theaterMode);
+  document.querySelector('main').classList.toggle('theater', theaterMode);
+  document.body.classList.toggle('theater-mode', theaterMode);
   theaterBtn.classList.toggle('active', theaterMode);
   theaterBtn.title = theaterMode ? 'Exit theater mode' : 'Theater mode';
-  if (player) player.dimensions('100%', undefined);
+  if (player) player.trigger('playerresize');
 });
 
 /* ── Keyboard shortcuts panel ────────────────────────────────── */

@@ -18,6 +18,7 @@ let subtitleTracks     = [];     // { label, src, srclang } — shared across qu
 
 /* ── DOM refs ────────────────────────────────────────────────── */
 const megaUrlInput    = document.getElementById('mega-url');
+const pasteBtn        = document.getElementById('paste-btn');
 const loadBtn         = document.getElementById('load-btn');
 const resetBtn        = document.getElementById('reset-btn');
 const statusMsg       = document.getElementById('status-msg');
@@ -40,6 +41,7 @@ const backBtn         = document.getElementById('back-btn');
 const subtitleRowsEl  = document.getElementById('subtitle-rows');
 const addSubtitleBtn  = document.getElementById('add-subtitle-btn');
 const subCount        = document.getElementById('sub-count');
+const toastContainer  = document.getElementById('toast-container');
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 function formatBytes(bytes) {
@@ -52,6 +54,18 @@ function formatBytes(bytes) {
 function setStatus(msg, type = '') {
   statusMsg.innerHTML = msg;
   statusMsg.className = `status-msg ${type}`;
+}
+
+/** Show a transient toast notification. type: 'info' | 'error' */
+function showToast(msg, type = 'info', duration = 3500) {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  toastContainer.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('dismissing');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }, duration);
 }
 
 function isMegaUrl(url) {
@@ -152,6 +166,33 @@ function addSubtitleRow() {
 
 addSubtitleBtn.addEventListener('click', addSubtitleRow);
 
+/* ── Paste from clipboard ────────────────────────────────────── */
+pasteBtn.addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      megaUrlInput.value = text.trim();
+      megaUrlInput.classList.remove('error');
+      megaUrlInput.focus();
+    }
+  } catch (e) {
+    showToast('Could not access clipboard — paste the link manually.', 'error');
+  }
+});
+
+/* ── Volume persistence ──────────────────────────────────────── */
+const VOLUME_KEY = 'mw-volume';
+(function restoreSavedVolume() {
+  const raw = localStorage.getItem(VOLUME_KEY);
+  if (raw !== null) {
+    const vol = parseFloat(raw);
+    if (!isNaN(vol)) {
+      volumeSlider.value = vol;
+      volumeDisplay.textContent = `${Math.round(vol * 100)}%`;
+    }
+  }
+})();
+
 function readSubtitleRows() {
   return Array.from(subtitleRowsEl.querySelectorAll('.subtitle-row'))
     .map(row => ({
@@ -187,6 +228,15 @@ function resetApp() {
   subtitleBlobUrls.forEach(u => URL.revokeObjectURL(u));
   subtitleBlobUrls = [];
   subtitleTracks   = [];
+
+  // Exit theater mode
+  if (theaterMode) {
+    theaterMode = false;
+    document.querySelector('main').classList.remove('theater');
+    document.body.classList.remove('theater-mode');
+    theaterBtn.classList.remove('active');
+    theaterBtn.title = 'Theater mode';
+  }
 
   currentQualityIdx = -1;
   megaUrl = '';
@@ -354,6 +404,7 @@ volumeSlider.addEventListener('input', () => {
   const vol = parseFloat(volumeSlider.value);
   if (player) player.volume(vol);
   volumeDisplay.textContent = `${Math.round(vol * 100)}%`;
+  localStorage.setItem(VOLUME_KEY, vol);
 });
 
 pipBtn.addEventListener('click', async () => {
@@ -365,7 +416,7 @@ pipBtn.addEventListener('click', async () => {
       else await videoEl.requestPictureInPicture();
     } catch (e) { console.warn('PiP error:', e); }
   } else {
-    alert('Picture-in-Picture is not supported by your browser.');
+    showToast('Picture-in-Picture is not supported by your browser.', 'error');
   }
 });
 
@@ -386,10 +437,11 @@ loopBtn.addEventListener('click', () => {
 let theaterMode = false;
 theaterBtn.addEventListener('click', () => {
   theaterMode = !theaterMode;
-  document.querySelector('.container').classList.toggle('theater', theaterMode);
+  document.querySelector('main').classList.toggle('theater', theaterMode);
+  document.body.classList.toggle('theater-mode', theaterMode);
   theaterBtn.classList.toggle('active', theaterMode);
   theaterBtn.title = theaterMode ? 'Exit theater mode' : 'Theater mode';
-  if (player) player.dimensions('100%', undefined);
+  if (player) player.trigger('playerresize');
 });
 
 /* ── Keyboard shortcuts panel ────────────────────────────────── */
@@ -402,6 +454,13 @@ shortcutsBtn.addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   // Don't fire when typing in an input/textarea
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+  // Escape exits theater mode even without a player
+  if (e.key === 'Escape' && theaterMode) {
+    theaterBtn.click();
+    return;
+  }
+
   if (!player) return;
 
   switch (e.key) {

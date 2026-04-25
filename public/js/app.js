@@ -176,17 +176,20 @@ pasteBtn.addEventListener('click', async () => {
       megaUrlInput.focus();
     }
   } catch (e) {
-    showToast('Clipboard access denied — paste manually.', 'error');
+    showToast('Could not access clipboard — paste the link manually.', 'error');
   }
 });
 
 /* ── Volume persistence ──────────────────────────────────────── */
 const VOLUME_KEY = 'mw-volume';
 (function restoreSavedVolume() {
-  const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
-  if (!isNaN(saved)) {
-    volumeSlider.value = saved;
-    volumeDisplay.textContent = `${Math.round(saved * 100)}%`;
+  const raw = localStorage.getItem(VOLUME_KEY);
+  if (raw !== null) {
+    const vol = parseFloat(raw);
+    if (!isNaN(vol)) {
+      volumeSlider.value = vol;
+      volumeDisplay.textContent = `${Math.round(vol * 100)}%`;
+    }
   }
 })();
 

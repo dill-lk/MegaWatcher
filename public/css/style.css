@@ -52,10 +52,15 @@ body {
 
 /* ── Header ─────────────────────────────────────────────────── */
 .site-header {
-  background: linear-gradient(135deg, var(--bg2) 0%, var(--bg-dark-tint) 100%);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: linear-gradient(160deg, var(--bg2) 0%, var(--bg-dark-tint) 100%);
   border-bottom: 2px solid var(--red);
   padding: 1.1rem 0;
-  box-shadow: 0 2px 16px rgba(229,23,63,.18);
+  box-shadow: 0 4px 32px rgba(0,0,0,.75), 0 2px 12px rgba(229,23,63,.2);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .header-inner {

@@ -15,6 +15,8 @@
   --radius:     10px;
   --shadow:     0 6px 28px rgba(0,0,0,.65);
   --transition: 180ms ease;
+  --bg-dark-tint:        #1a0a0e;
+  --theater-fade-opacity: 0.25;
 }
 
 html { font-size: 16px; scroll-behavior: smooth; }
@@ -41,7 +43,7 @@ body {
 
 /* ── Header ─────────────────────────────────────────────────── */
 .site-header {
-  background: linear-gradient(135deg, var(--bg2) 0%, #1a0a0e 100%);
+  background: linear-gradient(135deg, var(--bg2) 0%, var(--bg-dark-tint) 100%);
   border-bottom: 2px solid var(--red);
   padding: 1.1rem 0;
   box-shadow: 0 2px 16px rgba(229,23,63,.18);
@@ -519,7 +521,7 @@ details[open] .sub-arrow { transform: rotate(90deg); }
 
 /* ── Footer ─────────────────────────────────────────────────── */
 .site-footer {
-  background: linear-gradient(135deg, var(--bg2) 0%, #1a0a0e 100%);
+  background: linear-gradient(135deg, var(--bg2) 0%, var(--bg-dark-tint) 100%);
   border-top: 1px solid var(--border);
   padding: 1rem 0;
   text-align: center;
@@ -541,7 +543,7 @@ main.theater .player-wrapper {
 /* Theater mode body overrides */
 body.theater-mode .site-header,
 body.theater-mode .site-footer {
-  opacity: 0.25;
+  opacity: var(--theater-fade-opacity);
   transition: opacity 300ms ease;
 }
 
